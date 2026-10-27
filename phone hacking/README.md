@@ -1,6 +1,6 @@
-# ADB Device Manager
+# ADB Device Manager & Debloater
 
-A small Windows desktop UI for the bundled Android Debug Bridge tools.
+A clean, powerful Windows desktop UI for Android Debug Bridge tools and bloatware management.
 
 ## Run
 
@@ -10,31 +10,30 @@ Install Python 3.10 or newer, then double-click `run_adb_manager.bat` or run:
 py adb_manager.py
 ```
 
-The application expects `platform-tools/adb.exe` beside the Python file. The supplied platform-tools revision is 31.0.3.
+The application expects `platform-tools/adb.exe` beside the Python file (bundled revision 31.0.3).
 
-## Phone setup
+## Phone Setup
 
-1. On the phone, enable Developer options.
-2. Enable USB debugging.
-3. Connect the phone by USB.
-4. Accept the computer authorization prompt on the phone.
-5. Click **Refresh** in the app.
+1. On the phone, open **Settings > About phone** and tap **Build number** 7 times.
+2. Go to **Settings > Developer options** and turn on **USB debugging**.
+3. Connect the phone by USB cable.
+4. Accept the computer authorization prompt on the phone screen.
+5. The app automatically detects connected devices with live hotplug detection.
 
-## Features
+## Features & Improvements
 
-The app opens on a **Getting started** tab with a five-step setup guide. It explains how to enable Developer options, turn on USB debugging, authorize the computer, and check the connection. The guide updates automatically when a device is detected or when no authorized device is found, so you can return to the program months later without having to remember the process.
+- **Accurate Package State Detection**: Live tracking of **Enabled**, **Disabled**, and **Uninstalled (User 0)** packages using multi-flag package queries (`-a`, `-s`, `-3`, `-d`, `-e`, `-u`).
+- **Debloating Intelligence**: Built-in curated database classifying packages into **Safe**, **Caution**, and **Essential** tiers across Google, Samsung, Xiaomi, Carrier, and Telemetry/Ad services.
+- **One-Click Bloatware Selection**: Quickly highlight and select recommended safe bloatware packages with a single click.
+- **Category Filtering**: Filter by *Safe Bloatware*, *Carrier Bloat*, *OEM (Samsung/Xiaomi)*, *Telemetry & Ads*, or *Disabled / Inactive*.
+- **Package Inspector**: Select any package to review its full description, category, safety rating, and APK path.
+- **Critical Safeguards**: Blocks deletion of core Android components and explicitly alerts before modifying active launchers or keyboards to prevent accidental lockout.
+- **Non-Root Safe Execution**: Uses `pm disable-user --user 0` instead of root-only commands, ensuring flawless execution on standard devices.
+- **Device Diagnostics & Reboot**: One-click shortcuts to restart normally, reboot into **Recovery**, or reboot into **Fastboot/Bootloader**.
+- **Quick App Controls**: Force-stop running processes or clear application cache and data in one click.
+- **Automatic USB Hotplug**: Automatically recognizes device plug/unplug events without needing manual refreshes.
+- **Advanced Shell Console**: Run direct phone shell commands or raw ADB arguments with full output history.
+- **Import/Export Profiles**: Save and review package snapshots in JSON format.
 
-- Device connection and basic Android details.
-- Full package listing and search, separated into System apps and User apps tabs.
-- Friendly app-name column alongside each package name, with a safe package-based fallback when Android does not provide a label.
-- Enable and disable selected packages.
-- Uninstall packages for Android user 0.
-- Restore a user-removed app with Android's `cmd package install-existing` command when the system package is still present.
-- APK installation.
-- Export/import package lists for review.
-- Advanced console with a phone-shell mode for commands such as `pm uninstall --user 0 package.name`, plus an ADB-arguments mode.
-- Command reference tab with common ADB and phone-shell commands and short explanations.
-
-Every device-changing action displays the command and asks for confirmation. The Apps tab displays system packages, but blocks several core Android packages from its guided actions. The advanced console is intentionally powerful: use it only when you understand the command, and keep a backup of important data. For an app removed for user 0, a typical restoration command is `cmd package install-existing package.name`.
-
-This tool does not root phones, bypass locks, or alter bootloader state.
+> [!NOTE]
+> This tool does not require root and does not alter bootloader locks. All user-level uninstalls retain the underlying system APK in `/system` and can be restored at any time via `cmd package install-existing`.
