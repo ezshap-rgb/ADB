@@ -259,9 +259,18 @@ class App(tk.Tk):
 
         self._build_style()
         self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._process_events)
         self.after(300, self.refresh_devices)
         self.after(3000, self._auto_poll_devices)
+
+    def _on_close(self) -> None:
+        """Cleanly releases the USB connection on app exit so WebUSB isn't blocked."""
+        try:
+            self.client.run(["kill-server"], timeout=3)
+        except Exception:
+            pass
+        self.destroy()
 
     def _build_style(self) -> None:
         style = ttk.Style(self)
