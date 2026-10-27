@@ -50,7 +50,8 @@ BLOATWARE_DATABASE: dict[str, tuple[str, str, str, str]] = {
     "com.google.android.gm": ("Gmail", "Google", "Safe", "Google email client."),
     "com.google.android.apps.maps": ("Google Maps", "Google", "Safe", "Google Maps and navigation."),
     "com.google.android.gms": ("Google Play Services", "Core", "Essential", "CRITICAL. Required for push notifications and Play Store."),
-    "com.google.android.vending": ("Google Play Store", "Core", "Essential", "CRITICAL. Required to install and update apps."),
+    "com.android.vending": ("Google Play Store", "Google", "Caution", "Official app store. Can be locked/hidden or restored for child-safe phone management."),
+    "com.google.android.vending": ("Google Play Store", "Google", "Caution", "Official app store. Can be locked/hidden or restored for child-safe phone management."),
     "com.google.android.gsf": ("Google Services Framework", "Core", "Essential", "CRITICAL. Core framework for Google cloud services."),
 
     # Samsung Bloatware
@@ -370,6 +371,14 @@ class App(tk.Tk):
         self.guide_next.configure(text="Finish" if self.guide_step == len(steps) - 1 else "Next")
 
     def _build_apps_tab(self) -> None:
+        # Child-Safe Mode Banner for Google Play Store
+        parental_bar = ttk.LabelFrame(self.apps_tab, text="Child-Safe Mode: Google Play Store (com.android.vending)", padding=(8, 4))
+        parental_bar.pack(fill="x", pady=(0, 6))
+        self.play_store_status_var = tk.StringVar(value="Play Store Status: Connect device & load apps")
+        ttk.Label(parental_bar, textvariable=self.play_store_status_var, font=("Segoe UI", 9, "bold")).pack(side="left", padx=6)
+        self.play_store_btn_var = tk.StringVar(value="🛡️ Lock / Restore Play Store")
+        ttk.Button(parental_bar, textvariable=self.play_store_btn_var, command=self.toggle_play_store).pack(side="right", padx=6)
+
         # Search and filter controls
         top = ttk.Frame(self.apps_tab)
         top.pack(fill="x", pady=(0, 8))
@@ -505,6 +514,19 @@ class App(tk.Tk):
             )
 
     def _build_tools_tab(self) -> None:
+        # Child-Safe Mode: Google Play Store Control
+        play_box = ttk.LabelFrame(self.tools_tab, text="Child-Safe Mode: Google Play Store (com.android.vending)", padding=12)
+        play_box.pack(fill="x", anchor="n", pady=(0, 10))
+        ttk.Label(
+            play_box,
+            text="Easily lock or restore Google Play Store on a child's phone. Restoring reinstalls directly from the phone's internal system partition with ZERO APK download required.",
+            wraplength=850,
+        ).pack(anchor="w")
+        p_row = ttk.Frame(play_box)
+        p_row.pack(fill="x", pady=(8, 0))
+        ttk.Button(p_row, text="🛡️ Lock Phone (Hide & Uninstall Play Store)", command=self.lock_play_store).pack(side="left", padx=(0, 8))
+        ttk.Button(p_row, text="🔓 Unlock Phone (Restore & Enable Play Store)", command=self.restore_play_store).pack(side="left", padx=8)
+
         # Device Power & Reboot controls
         reboot_box = ttk.LabelFrame(self.tools_tab, text="Device Power & Recovery Controls", padding=12)
         reboot_box.pack(fill="x", anchor="n")
@@ -723,6 +745,15 @@ class App(tk.Tk):
         disabled_count = sum(1 for p in packages.values() if p.status in ("Disabled", "Uninstalled (User 0)"))
         self._append_tools(f"Loaded {len(packages)} packages. Found {safe_count} safe debloat targets; {disabled_count} currently inactive.")
 
+        # Update Child-Safe Play Store status
+        vending = packages.get("com.android.vending") or packages.get("com.google.android.vending")
+        if vending and vending.status == "Enabled":
+            self.play_store_status_var.set("Play Store: ACTIVE (Phone is Unlocked)")
+            self.play_store_btn_var.set("🛡️ Lock Phone (Hide Play Store)")
+        else:
+            self.play_store_status_var.set("Play Store: LOCKED / HIDDEN (Child-Safe Active)")
+            self.play_store_btn_var.set("🔓 Unlock Phone (Restore Play Store)")
+
     def _filter_packages(self) -> None:
         if not self.packages_data:
             return
@@ -798,7 +829,11 @@ class App(tk.Tk):
 
     def _check_critical_safeguards(self, packages: list[str]) -> bool:
         """Protects against bricking launchers, keyboards, or protected core services."""
-        unsafe = [p for p in packages if p.startswith(PROTECTED_PREFIXES) or (p in self.packages_data and self.packages_data[p].safety == "Essential")]
+        unsafe = [
+            p for p in packages
+            if (p.startswith(PROTECTED_PREFIXES) or (p in self.packages_data and self.packages_data[p].safety == "Essential"))
+            and not p.endswith(".vending")
+        ]
         if unsafe:
             messagebox.showerror(
                 "Protected System Package",
@@ -881,6 +916,42 @@ class App(tk.Tk):
             return
         commands = [["pm", "clear", p] for p in packages]
         self._confirm_and_run(commands, f"Clear app storage and cache for {len(packages)} package(s)? This resets app data.")
+
+    def lock_play_store(self) -> None:
+        if not self.selected_serial:
+            messagebox.showinfo("No device", "Connect and authorize an Android device first.")
+            return
+        commands = [
+            ["pm", "disable-user", "--user", "0", "com.android.vending"],
+            ["pm", "uninstall", "--user", "0", "com.android.vending"]
+        ]
+        self._confirm_and_run(
+            commands,
+            "🛡️ CHILD-SAFE LOCK:\nHide & Uninstall Google Play Store (com.android.vending) for user 0?\n\n"
+            "The Play Store icon will disappear from the phone so the child cannot browse or download apps.\n"
+            "You can restore it anytime with one click (no APK needed)."
+        )
+
+    def restore_play_store(self) -> None:
+        if not self.selected_serial:
+            messagebox.showinfo("No device", "Connect and authorize an Android device first.")
+            return
+        commands = [
+            ["cmd", "package", "install-existing", "com.android.vending"],
+            ["pm", "enable", "com.android.vending"]
+        ]
+        self._confirm_and_run(
+            commands,
+            "🔓 UNLOCK & RESTORE GOOGLE PLAY STORE:\nReinstall and enable Google Play Store (com.android.vending) from the phone's internal system partition?\n\n"
+            "This will bring the Play Store back immediately with zero APK download required."
+        )
+
+    def toggle_play_store(self) -> None:
+        vending = self.packages_data.get("com.android.vending") or self.packages_data.get("com.google.android.vending")
+        if vending and vending.status == "Enabled":
+            self.lock_play_store()
+        else:
+            self.restore_play_store()
 
     def run_reboot(self, mode: str) -> None:
         if not self.selected_serial:
