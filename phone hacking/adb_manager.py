@@ -534,6 +534,17 @@ class App(tk.Tk):
         ttk.Button(p_row, text="🛡️ Lock Phone (Hide & Uninstall Play Store)", command=self.lock_play_store).pack(side="left", padx=(0, 8))
         ttk.Button(p_row, text="🔓 Unlock Phone (Restore & Enable Play Store)", command=self.restore_play_store).pack(side="left", padx=8)
 
+        # Kosher Phone (DPM Lockdown) Control
+        dpm_box = ttk.LabelFrame(self.tools_tab, text="Kosher Phone (DPM Lockdown)", padding=12)
+        dpm_box.pack(fill="x", anchor="n", pady=(0, 10))
+        dpm_row = ttk.Frame(dpm_box)
+        dpm_row.pack(fill="x", pady=(4, 0))
+        self.dpm_status_var = tk.StringVar(value="Device Owner: Connect device to check")
+        ttk.Label(dpm_row, textvariable=self.dpm_status_var, font=("Segoe UI", 9, "bold")).pack(side="left", padx=(0, 14))
+        ttk.Button(dpm_row, text="??? Set Device Owner", command=self.setup_device_owner).pack(side="left", padx=(0, 8))
+        ttk.Button(dpm_row, text="?? Return to Open Phone", command=self.remove_device_owner).pack(side="left", padx=8)
+        ttk.Button(dpm_row, text="Refresh DPM Status", command=self.check_dpm_status).pack(side="right")
+
         # Device Power & Reboot controls
         reboot_box = ttk.LabelFrame(self.tools_tab, text="Device Power & Recovery Controls", padding=12)
         reboot_box.pack(fill="x", anchor="n")
