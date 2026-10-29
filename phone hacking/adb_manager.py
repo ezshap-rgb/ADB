@@ -17,6 +17,9 @@ from typing import Callable, Optional
 
 ROOT = Path(__file__).resolve().parent
 ADB = ROOT / "platform-tools" / "adb.exe"
+TESTDPC_APK = ROOT / "platform-tools" / "testdpc.apk"
+DPC_ADMIN_RECEIVER = "com.afwsamples.testdpc/.DeviceAdminReceiver"
+DPC_PACKAGE = "com.afwsamples.testdpc"
 
 # Curated Bloatware Intelligence Database
 # Maps package names to: (Friendly Name, Category, Safety Level, Description)
@@ -381,7 +384,7 @@ class App(tk.Tk):
 
     def _build_apps_tab(self) -> None:
         # Child-Safe Mode Banner for Google Play Store
-        parental_bar = ttk.LabelFrame(self.apps_tab, text="Child-Safe Mode: Google Play Store (com.android.vending)", padding=(8, 4))
+        parental_bar = ttk.LabelFrame(self.apps_tab, text="Protected Mode: Google Play Store (com.android.vending)", padding=(8, 4))
         parental_bar.pack(fill="x", pady=(0, 6))
         self.play_store_status_var = tk.StringVar(value="Play Store Status: Connect device & load apps")
         ttk.Label(parental_bar, textvariable=self.play_store_status_var, font=("Segoe UI", 9, "bold")).pack(side="left", padx=6)
@@ -523,14 +526,9 @@ class App(tk.Tk):
             )
 
     def _build_tools_tab(self) -> None:
-        # Child-Safe Mode: Google Play Store Control
-        play_box = ttk.LabelFrame(self.tools_tab, text="Child-Safe Mode: Google Play Store (com.android.vending)", padding=12)
+        # Protected Mode: Google Play Store Control
+        play_box = ttk.LabelFrame(self.tools_tab, text="Protected Mode: Google Play Store (com.android.vending)", padding=12)
         play_box.pack(fill="x", anchor="n", pady=(0, 10))
-        ttk.Label(
-            play_box,
-            text="Easily lock or restore Google Play Store on a child's phone. Restoring reinstalls directly from the phone's internal system partition with ZERO APK download required.",
-            wraplength=850,
-        ).pack(anchor="w")
         p_row = ttk.Frame(play_box)
         p_row.pack(fill="x", pady=(8, 0))
         ttk.Button(p_row, text="🛡️ Lock Phone (Hide & Uninstall Play Store)", command=self.lock_play_store).pack(side="left", padx=(0, 8))
@@ -674,6 +672,12 @@ class App(tk.Tk):
             elif tag == "text":
                 self._append_console(str(payload[1]))
                 self._append_tools(str(payload[1]))
+            elif tag == "dpm_status":
+                if hasattr(self, "dpm_status_var"):
+                    self.dpm_status_var.set(f"Device Owner: {payload[1]}")
+            elif tag == "dpm_result":
+                self._append_tools(str(payload[1]))
+                self.check_dpm_status()
             elif tag == "reload_packages":
                 self._append_tools(str(payload[1]))
                 # Automatically reload package list to reflect new state
@@ -1101,6 +1105,107 @@ class App(tk.Tk):
         self.tools_log.insert("end", text + "\n\n")
         self.tools_log.see("end")
         self.tools_log.configure(state="disabled")
+
+
+
+    def check_dpm_status(self) -> None:
+        if not self.selected_serial:
+            return
+        serial = self.selected_serial
+        def worker() -> tuple[str, str]:
+            res = self.client.shell(serial, "dpm", "list-owners")
+            out = res.stdout.strip()
+            is_owner = DPC_PACKAGE in out
+            return ("dpm_status", "Managed (Device Owner Active)" if is_owner else "Unmanaged (Standard Open Phone)")
+        self._run_async("Checking Device Owner status", worker)
+
+    def setup_device_owner(self) -> None:
+        if not self.selected_serial:
+            messagebox.showinfo("No device", "Connect and authorize an Android device first.")
+            return
+
+        serial = self.selected_serial
+
+        # Check for active accounts (Google requires zero accounts when provisioning Device Owner)
+        acc_res = self.client.shell(serial, "dumpsys", "account")
+        accounts_found = []
+        for line in acc_res.stdout.splitlines():
+            line_s = line.strip()
+            if line_s.startswith("Account {name=") and "type=" in line_s:
+                accounts_found.append(line_s)
+
+        if accounts_found:
+            msg = (
+                "?? GOOGLE ACCOUNT(S) DETECTED ON PHONE:\n\n"
+                "Android security strictly requires all accounts to be temporarily removed before provisioning a Device Owner.\n\n"
+                "Please do the following on the phone:\n"
+                "1. Go to Settings > Accounts (or Passwords & accounts)\n"
+                "2. Tap and Remove each Google / Samsung account\n"
+                "3. Click OK here once accounts are removed\n\n"
+                "You can re-add your accounts immediately after this lock is provisioned!"
+            )
+            if not messagebox.askokcancel("Accounts Must Be Removed First", msg):
+                return
+
+        prompt = (
+            "??? PROVISION CHILD-SAFE DEVICE OWNER:\n\n"
+            "This will:\n"
+            "1. Install the official Google TestDPC enterprise admin tool\n"
+            "2. Provision it as the primary Device Owner via DPM\n"
+            "3. Enforce the DISALLOW_INSTALL_UNKNOWN_SOURCES restriction\n\n"
+            "Manual APK installs will be permanently blocked in the OS and cannot be bypassed in Settings.\n"
+            "You can return the phone to an Open Phone anytime using 'Remove Device Owner'."
+        )
+        if not messagebox.askyesno("Confirm Device Owner Setup", prompt):
+            return
+
+        def worker() -> tuple[str, str]:
+            lines = []
+            if TESTDPC_APK.is_file():
+                inst_res = self.client.run(["-s", serial, "install", "-r", "-t", str(TESTDPC_APK)], timeout=60)
+                lines.append(f"$ adb install testdpc.apk -> {inst_res.stdout or inst_res.stderr}")
+            else:
+                lines.append("TestDPC APK not found locally; skipping install step.")
+
+            dpm_res = self.client.shell(serial, "dpm", "set-device-owner", DPC_ADMIN_RECEIVER)
+            lines.append(f"$ adb shell dpm set-device-owner {DPC_ADMIN_RECEIVER}")
+            lines.append(dpm_res.stdout or dpm_res.stderr)
+
+            # Apply unknown sources restriction
+            self.client.shell(serial, "dpm", "set-user-restriction", "no_install_unknown_sources", "1")
+            lines.append("$ adb shell dpm set-user-restriction no_install_unknown_sources 1")
+
+            return ("dpm_result", "\n".join(lines))
+
+        self._run_async("Provisioning Device Owner", worker)
+
+    def remove_device_owner(self) -> None:
+        if not self.selected_serial:
+            messagebox.showinfo("No device", "Connect and authorize an Android device first.")
+            return
+
+        serial = self.selected_serial
+        prompt = (
+            "?? REMOVE DEVICE OWNER (RETURN TO OPEN PHONE):\n\n"
+            "This will:\n"
+            "1. Remove all Device Owner administrative policies\n"
+            "2. Clear all install restrictions\n"
+            "3. Uninstall the admin helper\n\n"
+            "The phone will immediately become a standard open phone with zero restrictions."
+        )
+        if not messagebox.askyesno("Confirm Removal", prompt):
+            return
+
+        def worker() -> tuple[str, str]:
+            lines = []
+            # Remove active admin and uninstall
+            r1 = self.client.shell(serial, "dpm", "remove-active-admin", DPC_ADMIN_RECEIVER)
+            lines.append(f"$ adb shell dpm remove-active-admin {DPC_ADMIN_RECEIVER} -> {r1.stdout or r1.stderr}")
+            r2 = self.client.shell(serial, "pm", "uninstall", DPC_PACKAGE)
+            lines.append(f"$ adb shell pm uninstall {DPC_PACKAGE} -> {r2.stdout or r2.stderr}")
+            return ("dpm_result", "\n".join(lines))
+
+        self._run_async("Removing Device Owner", worker)
 
 
 if __name__ == "__main__":
